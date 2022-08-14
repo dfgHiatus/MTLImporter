@@ -125,7 +125,7 @@ namespace MTLImporter
                             var slot = Engine.Current.WorldManager.FocusedWorld.AddSlot(material.name);
                             slot.PositionInFrontOfUser();
 
-                            SetupTextures(file, material, slot);
+                            // SetupTextures(file, material, slot);
                             
                             if (material.isMetallic)
                             {
@@ -147,7 +147,7 @@ namespace MTLImporter
             }
         }
 
-        public static void SetupTextures(string file, MTLMaterial material, Slot slot)
+        private static void SetupTextures(string file, MTLMaterial material, Slot slot)
         {
             if (!string.IsNullOrEmpty(material.diffuseMap))
             {
@@ -168,7 +168,7 @@ namespace MTLImporter
             }
         }
 
-        public static void SetupMetallic(string file, MTLMaterial material, Slot slot)
+        private static void SetupMetallic(string file, MTLMaterial material, Slot slot)
         {
             UniLog.Log("Starting Metallic");
             slot.CreateMaterialOrb<PBS_Metallic>();
@@ -194,7 +194,7 @@ namespace MTLImporter
             neosMat.Smoothness.Value = (100.0f - material.roughness) / 100.0f;
         }
 
-        public static void SetupSpecular(string file, MTLMaterial material, Slot slot)
+        private static void SetupSpecular(string file, MTLMaterial material, Slot slot)
         {
             UniLog.Log("Starting Specular");
             slot.CreateMaterialOrb<PBS_Specular>();
@@ -221,7 +221,7 @@ namespace MTLImporter
             neosMat.SpecularMap.Target = assetDict[material.specularMap];
         }
 
-        public static void SetupUnlit(string file, MTLMaterial material, Slot slot)
+        private static void SetupUnlit(string file, MTLMaterial material, Slot slot)
         {
             UniLog.Log("Starting Unlit");
             slot.CreateMaterialOrb<UnlitMaterial>();
