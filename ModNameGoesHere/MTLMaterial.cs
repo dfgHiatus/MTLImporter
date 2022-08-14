@@ -1,6 +1,4 @@
 ﻿using BaseX;
-using FrooxEngine;
-using System;
 
 namespace MTLImporter
 {
@@ -8,34 +6,21 @@ namespace MTLImporter
     // https://steamcommunity.com/sharedfiles/filedetails/?id=2005695630
     public class MTLMaterial
     {
+        // Transparent Color (Tf) and Index of Refraction (Ni) are not utilized in Neos AFAIK
         public string name = "New Material";
         public float roughness = 100f;
         public color ambientColor = new color(0.2f, 0.2f, 0.2f);
         public color diffuseColor = new color(0.8f, 0.8f, 0.8f);
+        public string diffuseMap = string.Empty;
         public color specularColor = new color(1.0f, 1.0f, 1.0f);
+        public string specularMap = string.Empty;
         public color emissionColor = new color(0.0f, 0.0f, 0.0f);
         public float alpha = 1.0f;
         public float nonAlpha = 0.0f;
         public bool isMetallic = false;
         public string fileName = string.Empty;
 
-        // Transparent Color (Tf) and Index of Refraction (Ni) are not utilized
-        public MTLMaterial()
-        {
-            
-        }
-
-        public MTLMaterial(string newmtl, float Ns, color Ka, color Kd, color Ks, color Ke, float d, float TR, int illum)
-        {
-            name = newmtl;
-            ambientColor = Ka;
-            diffuseColor = Kd;
-            emissionColor = Ke;
-            alpha = TR - d;
-            roughness = Ns;
-            specularColor = Ks;
-            isMetallic = ConvertFromMTL(illum);
-        }
+        public MTLMaterial() { }
 
         public void ComputeAlpha()
         {
