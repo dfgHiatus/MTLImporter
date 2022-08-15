@@ -2,7 +2,6 @@
 using System.IO;
 using System.Threading.Tasks;
 using BaseX;
-using CodeX;
 using FrooxEngine;
 
 namespace MTLImporter
@@ -48,10 +47,10 @@ namespace MTLImporter
 			StaticTexture2D comp = null;
 			foreach (var c in world.AssetsSlot.GetComponentsInChildren<StaticTexture2D>())
 			{
-				if (c is StaticTexture2D tex3)
+				if (c is StaticTexture2D staticTexture)
                 {
-					if (tex3.URL.Value == uri)
-						return tex3;
+					if (staticTexture.URL.Value == uri)
+						return staticTexture;
                 }
 			}
 				

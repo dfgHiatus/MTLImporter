@@ -51,6 +51,7 @@
     <Reference Include="System" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Material.cs" />
     <Compile Include="MTLImporter.cs" />
     <Compile Include="MTLMaterial.cs" />
     <Compile Include="MTLUtils.cs" />

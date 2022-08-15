@@ -34,7 +34,7 @@ namespace MTLImporter
         public string specularMap = string.Empty;
         public color specularColor = new color(0.0f, 0.0f, 0.0f, 0.25f);
 
-        private float _roughness = 1f;
+        private float _roughness = 0.75f;
         public float roughness
         {
             set => _roughness = (100.0f - value) / 100.0f;
@@ -49,8 +49,7 @@ namespace MTLImporter
                 isMetallic = ConvertFromMTL(value);
             }
         }
-
-
+        
         public bool ConvertFromMTL(int index)
         {
             switch (index)

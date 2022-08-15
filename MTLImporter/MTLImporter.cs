@@ -31,9 +31,9 @@ namespace MTLImporter
 		private static Dictionary<string, StaticTexture2D> assetDict = new Dictionary<string, StaticTexture2D>();
 
 		[AutoRegisterConfigKey]
-		public static ModConfigurationKey<bool> enabled = new ModConfigurationKey<bool>("enabled", "Enabled", () => true);
+		public static ModConfigurationKey<bool> forceBright = new ModConfigurationKey<bool>("forceBright", "Tint imported abledbo color as white. Fixes entirely dark materials", () => true);
 		[AutoRegisterConfigKey]
-		public static ModConfigurationKey<bool> forceBright = new ModConfigurationKey<bool>("forceBright", "Fix entirely dark materials. Imports will be tinted white.", () => true);
+		public static ModConfigurationKey<Material> forceMaterial = new ModConfigurationKey<Material>("forceMaterial", "Force material type on import", () => Material.None);
 
 		public override void OnEngineInit()
 		{
@@ -53,9 +53,12 @@ namespace MTLImporter
 		{
 			static bool Prefix(IEnumerable<string> files, ref Task __result)
 			{
-				var mtls = files.Where(x => x.ToLower().EndsWith("mtl"));
-				__result = ProcessMTLImport(mtls);
-				return false;
+				var query = files.Where(x => x.ToLower().EndsWith("mtl"));
+				if (query.Count() > 0)
+                {
+					__result = ProcessMTLImport(query);
+				}
+				return true;
 			}
 		}
 
@@ -66,7 +69,7 @@ namespace MTLImporter
 			for (int i = 0; i < filesArr.Count(); i++)
 			{
 				var file = filesArr[i];
-				if (Path.GetExtension(file).ToLower().Equals(".mtl") && _config.GetValue(enabled))
+				if (Path.GetExtension(file).ToLower().Equals(".mtl"))
 				{
 					// https://stackoverflow.com/questions/65201192/read-from-file-split-content-into-group-when-empty-line
 					List<List<string>> materials = new List<List<string>>();
@@ -200,13 +203,32 @@ namespace MTLImporter
 						await SetupTextures(file, material, slot).ConfigureAwait(false);
 
 						await default(ToWorld);
-						if (material.specularMap != string.Empty)
-							if (material.isMetallic)
-								SetupMetallic(material, slot);
-							else
-								SetupSpecular(material, slot);
+						var forceMat = _config.GetValue(forceMaterial);
+						if (forceMat != Material.None)
+                        {
+							switch (forceMat)
+							{
+								case Material.PBS_Metallic:
+									SetupMetallic(material, slot);
+									break;
+								case Material.PBS_Specular:
+									SetupSpecular(material, slot);
+									break;
+								case Material.Unlit:
+									SetupUnlit(material, slot);
+									break;
+							}
+						}
 						else
-							SetupUnlit(material, slot);
+                        {
+							if (material.specularMap != string.Empty)
+								if (material.isMetallic)
+									SetupMetallic(material, slot);
+								else
+									SetupSpecular(material, slot);
+							else
+								SetupUnlit(material, slot);
+						}
 						await default(ToBackground);
 					}
 				}
@@ -224,6 +246,7 @@ namespace MTLImporter
 				material.heightMap,
 				material.metallicMap,
 				material.specularMap,
+				material.roughnessMap,
 			};
 
 			foreach (var texture in textureFiles)
@@ -234,16 +257,15 @@ namespace MTLImporter
 					var path = Path.Combine(Path.GetDirectoryName(file), texture);
 					var img = await MTLUtils.ImportImage(path, slot.World);
 
-					bool flag = false;
+					bool hasAlpha = false;
 					try
 					{
-						flag = img.RawAsset.HasAlpha;	
+						hasAlpha = img.RawAsset.HasAlpha;
 					}
-					catch (Exception e)
-					{
-						UniLog.Error("Error processing  alpha on MTL texture: " + e.Message);
-					}
-					if (!flag && (texture == material.metallicMap || texture == material.specularMap))
+					catch (Exception) { } // So we don't crash
+
+					// Alpha from intensity
+					if (!hasAlpha && (texture == material.metallicMap || texture == material.specularMap))
 					{
 						img.ProcessPixels(delegate (color c)
 						{
@@ -252,6 +274,25 @@ namespace MTLImporter
 							return new color(in rgb, MathX.MaxComponent(in v));
 						});
 					}
+
+					// Invert RGB, then Alpha from intensity
+					if (!hasAlpha && (texture == material.roughnessMap))
+					{
+						img.ProcessPixels(delegate (color c)
+						{
+							float3 v = c.rgb;
+							float3 rgb = 1 - v;
+							return new color(in rgb, c.a);
+						});
+
+						img.ProcessPixels(delegate (color c)
+						{
+							float3 rgb = c.rgb;
+							float3 v = c.rgb;
+							return new color(in rgb, MathX.MaxComponent(in v));
+						});
+					}
+
 					assetDict.Add(texture, img);
 				}
 			}
@@ -293,10 +334,13 @@ namespace MTLImporter
 
 			if (assetDict.TryGetValue(material.heightMap, out tex))
 				neosMat.HeightMap.Target = tex;
-
-			neosMat.Smoothness.Value = 1 - material.roughness;
+			
+			neosMat.Metallic.Value = material.metallic;
 			if (assetDict.TryGetValue(material.metallicMap, out tex))
-				neosMat.MetallicMap.Target = tex; 
+				neosMat.MetallicMap.Target = tex;
+			neosMat.Smoothness.Value = 1 - material.roughness;
+			if (assetDict.TryGetValue(material.roughnessMap, out tex))
+				neosMat.MetallicMap.Target = tex;
 		}
 
 		private static void SetupSpecular(MTLMaterial material, Slot slot)
