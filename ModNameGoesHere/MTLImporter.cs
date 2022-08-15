@@ -6,243 +6,371 @@ using NeosModLoader;
 using System.IO;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using System.Linq;
+using System.Reflection;
+using System;
 
 namespace MTLImporter
 {
-    public class MTLImporter : NeosMod
-    {
-        public override string Name => "MTLImporter";
-        public override string Author => "dfgHiatus";
-        public override string Version => "1.0.0";
-        public override string Link => "https://github.com/dfgHiatus/MTLImporter/";
+	/*
+	* [____CURSOR PARKING LOT_______]
+	* [                             ]
+	* [_____________________________]
+	*  EDIT: this was important when we were in live share
+	* 	Users present at one point: dfgHiatus, eia485
+	*/
 
-        private static ModConfiguration _config;
-        private static Dictionary<string, StaticTexture2D> assetDict = new Dictionary<string, StaticTexture2D>();
+	public class MTLImporter : NeosMod
+	{
+		public override string Name => "MTLImporter";
+		public override string Author => "dfgHiatus";
+		public override string Version => "1.0.0";
+		public override string Link => "https://github.com/dfgHiatus/MTLImporter/";
 
-        [AutoRegisterConfigKey]
-        public static ModConfigurationKey<bool> enabled = new ModConfigurationKey<bool>("enabled", "Enabled", () => true);
+		private static ModConfiguration _config;
+		private static Dictionary<string, StaticTexture2D> assetDict = new Dictionary<string, StaticTexture2D>();
 
-        public override void OnEngineInit()
-        {
-            new Harmony("net.dfgHiatus.MTLImporter").PatchAll();
-            _config = GetConfiguration();
-            Engine.Current.RunPostInit(() => AssetPatch());
-        }
+		[AutoRegisterConfigKey]
+		public static ModConfigurationKey<bool> enabled = new ModConfigurationKey<bool>("enabled", "Enabled", () => true);
+		[AutoRegisterConfigKey]
+		public static ModConfigurationKey<bool> forceBright = new ModConfigurationKey<bool>("forceBright", "Fix entirely dark materials. Imports will be tinted white.", () => true);
 
-        public static void AssetPatch()
-        {
-            var aExt = Traverse.Create(typeof(AssetHelper)).Field<Dictionary<AssetClass, List<string>>>("associatedExtensions");
-            aExt.Value[AssetClass.Special].Add("mtl");
-        }
+		public override void OnEngineInit()
+		{
+			new Harmony("net.dfgHiatus.MTLImporter").PatchAll();
+			_config = GetConfiguration();
+			Engine.Current.RunPostInit(() => AssetPatch());
+		}
 
-        [HarmonyPatch(typeof(UniversalImporter), "Import", typeof(AssetClass), typeof(IEnumerable<string>),
-            typeof(World), typeof(float3), typeof(floatQ), typeof(bool))]
-        public class UniversalImporterPatch
-        {
-            static bool Prefix(ref IEnumerable<string> files)
-            {
-                foreach (var file in files)
-                {
-                    if (Path.GetExtension(file).ToLower().Equals(".mtl") && _config.GetValue(enabled))
-                    {
-                        // https://stackoverflow.com/questions/65201192/read-from-file-split-content-into-group-when-empty-line
-                        List<List<string>> materials = new List<List<string>>();
-                        List<string> currentMaterial = new List<string>();
+		public static void AssetPatch()
+		{
+			var aExt = Traverse.Create(typeof(AssetHelper)).Field<Dictionary<AssetClass, List<string>>>("associatedExtensions");
+			aExt.Value[AssetClass.Special].Add("mtl");
+		}
 
-                        foreach (string line in File.ReadLines(file))
-                        {
-                            if (line.Trim().Length == 0)
-                            {
-                                if (currentMaterial.Count > 0)
-                                {
-                                    materials.Add(currentMaterial);
-                                    currentMaterial = new List<string>();
-                                }
-                            }
-                            else
-                            {
-                                currentMaterial.Add(line);
-                            }
-                        }
+		[HarmonyPatch(typeof(UniversalImporter), "ImportTask", typeof(AssetClass), typeof(IEnumerable<string>), typeof(World), typeof(float3), typeof(floatQ), typeof(float3), typeof(bool))]
+		public class UniversalImporterPatch
+		{
+			static bool Prefix(IEnumerable<string> files, ref Task __result)
+			{
+				var mtls = files.Where(x => x.ToLower().EndsWith("mtl"));
+				__result = ProcessMTLImport(mtls);
+				return false;
+			}
+		}
 
-                        if (currentMaterial.Count > 0)
-                        {
-                            materials.Add(currentMaterial);
-                        }
+		private static async Task ProcessMTLImport(IEnumerable<string> files)
+		{
+			await default(ToBackground);
+			var filesArr = files.ToArray();
+			for (int i = 0; i < filesArr.Count(); i++)
+			{
+				var file = filesArr[i];
+				if (Path.GetExtension(file).ToLower().Equals(".mtl") && _config.GetValue(enabled))
+				{
+					// https://stackoverflow.com/questions/65201192/read-from-file-split-content-into-group-when-empty-line
+					List<List<string>> materials = new List<List<string>>();
+					List<string> currentMaterial = new List<string>();
 
-                        var mtlMaterial = new List<MTLMaterial>();
+					foreach (string line in File.ReadLines(file))
+					{
+						if (line.Trim().Length == 0)
+						{
+							if (currentMaterial.Count > 0)
+							{
+								materials.Add(currentMaterial);
+								currentMaterial = new List<string>();
+							}
+						}
+						else
+						{
+							currentMaterial.Add(line);
+						}
+					}
 
-                        foreach (var material in materials)
-                        {
-                            var mtlMat = new MTLMaterial();
-                            mtlMaterial.Add(mtlMat);
-                            foreach (var propertyTuple in material)
-                            {
-                                var lineSplit = propertyTuple.Split(' ');
-                                switch (lineSplit[0])
-                                {
-                                    case "newmtl":
-                                        mtlMat.name = lineSplit[1];
-                                        break;
-                                    case "Ns":
-                                        mtlMat.roughness = MTLUtils.ToFloat(propertyTuple);
-                                        break;
-                                    case "d":
-                                        mtlMat.alpha = MTLUtils.ToFloat(propertyTuple);
-                                        break;
-                                    case "Tr":
-                                        mtlMat.nonAlpha = MTLUtils.ToFloat(propertyTuple);
-                                        break;
-                                    case "Ka":
-                                        mtlMat.ambientColor = MTLUtils.ToColor(propertyTuple);
-                                        break;
-                                    case "Kd":
-                                        mtlMat.diffuseColor = MTLUtils.ToColor(propertyTuple);
-                                        break;
-                                    case "Ks":
-                                        mtlMat.specularColor = MTLUtils.ToColor(propertyTuple);
-                                        break;
-                                    case "Ke":
-                                        mtlMat.emissionColor = MTLUtils.ToColor(propertyTuple);
-                                        break;
-                                    case "illum":
-                                        mtlMat.isMetallic = mtlMat.ConvertFromMTL(MTLUtils.ToInt(propertyTuple));
-                                        break;
-                                    case "map_Ks":
-                                        mtlMat.specularMap = lineSplit[1];
-                                        break;
-                                    case "map_Kd":
-                                        mtlMat.diffuseMap = lineSplit[1];
-                                        break;
-                                }
+					if (currentMaterial.Count > 0)
+					{
+						materials.Add(currentMaterial);
+					}
 
-                                mtlMat.ComputeAlpha();   
-                            }
-                        }
+					var mtlMaterial = new List<MTLMaterial>();
 
-                        foreach (var material in mtlMaterial)
-                        {
-                            var slot = Engine.Current.WorldManager.FocusedWorld.AddSlot(material.name);
-                            slot.PositionInFrontOfUser();
+					foreach (var material in materials)
+					{
+						var mtlMat = new MTLMaterial();
+						mtlMaterial.Add(mtlMat);
+						foreach (var propertyTuple in material)
+						{
+							var lineSplit = propertyTuple.Split(' ');
+							switch (lineSplit[0])
+							{
+								case "newmtl":
+									mtlMat.name = lineSplit[1];
+									break;
 
-                            // SetupTextures(file, material, slot);
-                            
-                            if (material.isMetallic)
-                            {
-                                if (material.specularMap != string.Empty)
-                                    SetupSpecular(file, material, slot);
-                                else
-                                    SetupMetallic(file, material, slot);
-                            }
-                            else
-                            {
-                                SetupUnlit(file, material, slot);
-                            }
-                        }
-                    }
-                }
+								case "illum":
+									mtlMat.illum = MTLUtils.ToInt(lineSplit[1]);
+									break;
 
-                assetDict.Clear();
-                return true;
-            }
-        }
+								case "d":
+									mtlMat.alpha = MTLUtils.ToFloat(lineSplit[1]);
+									break;
+								case "Tr":
+									mtlMat.nonAlpha = MTLUtils.ToFloat(lineSplit[1]);
+									break;
 
-        private static void SetupTextures(string file, MTLMaterial material, Slot slot)
-        {
-            if (!string.IsNullOrEmpty(material.diffuseMap))
-            {
-                var diffuseTextureSlot = slot.AddSlot("Diffuse Map");
-                var path = Path.Combine(Path.GetDirectoryName(file), material.diffuseMap);
-                UniLog.Log(path);
-                ImageImporter.ImportImage(path, diffuseTextureSlot);
-                assetDict.Add(material.diffuseMap, slot.GetComponent<StaticTexture2D>());
-            }
+								case "Ka":
+									mtlMat.ambientColor = MTLUtils.ToColor(lineSplit.Skip(1).ToArray());
+									break;
+								case "map_Ka":
+									mtlMat.ambientMap = lineSplit[1];
+									break;
 
-            if (!string.IsNullOrEmpty(material.specularMap))
-            {
-                var specularTextureSlot = slot.AddSlot("Specular Map");
-                var path = Path.Combine(Path.GetDirectoryName(file), material.specularMap);
-                UniLog.Log(path);
-                ImageImporter.ImportImage(path, specularTextureSlot);
-                assetDict.Add(material.specularMap, slot.GetComponent<StaticTexture2D>());
-            }
-        }
+								case "Kd":
+									mtlMat.diffuseColor = MTLUtils.ToColor(lineSplit.Skip(1).ToArray());
+									break;
+								case "map_Kd":
+									mtlMat.diffuseMap = lineSplit[1];
+									break;
 
-        private static void SetupMetallic(string file, MTLMaterial material, Slot slot)
-        {
-            UniLog.Log("Starting Metallic");
-            slot.CreateMaterialOrb<PBS_Metallic>();
-            var neosMat = slot.GetComponent<PBS_Metallic>();
+								case "norm":
+								case "bump":
+								case "map_bump":
+									mtlMat.normalMap = lineSplit[1];
+									break;
 
-            if (material.alpha == 1.0f)
-            {
-                neosMat.AlbedoColor.Value = material.diffuseColor;
-            }
-            else
-            {
-                neosMat.BlendMode.Value = BlendMode.Alpha;
-                neosMat.AlbedoColor.Value = new color(
-                    material.diffuseColor.r,
-                    material.diffuseColor.g,
-                    material.diffuseColor.b,
-                    material.alpha
-                );
-            }
+								case "disp":
+								// case "height":
+								// case "map_disp":
+								// case "map_height":
+									mtlMat.heightMap = lineSplit[1];
+									break;
 
-            neosMat.AlbedoTexture.Target = assetDict[material.diffuseMap];
-            neosMat.EmissiveColor.Value = material.emissionColor;
-            neosMat.Smoothness.Value = (100.0f - material.roughness) / 100.0f;
-        }
+								case "Ke":
+									mtlMat.emissionColor = MTLUtils.ToColor(lineSplit.Skip(1).ToArray());
+									break;
+								case "map_Ke":
+									mtlMat.emissionMap = lineSplit[1];
+									break;
 
-        private static void SetupSpecular(string file, MTLMaterial material, Slot slot)
-        {
-            UniLog.Log("Starting Specular");
-            slot.CreateMaterialOrb<PBS_Specular>();
-            var neosMat = slot.GetComponent<PBS_Specular>();
+								case "Ns":
+								case "Pr":
+									mtlMat.roughness = MTLUtils.ToFloat(lineSplit[1]);
+									break;
+								case "map_Pr":
+									mtlMat.roughnessMap = lineSplit[1];
+									break;
 
-            if (material.alpha == 1.0f)
-            {
-                neosMat.AlbedoColor.Value = material.diffuseColor;
-            }
-            else
-            {
-                neosMat.BlendMode.Value = BlendMode.Alpha;
-                neosMat.AlbedoColor.Value = new color(
-                    material.diffuseColor.r,
-                    material.diffuseColor.g,
-                    material.diffuseColor.b,
-                    material.alpha
-                );
-            }
+								case "Pm":
+									mtlMat.metallic = MTLUtils.ToFloat(lineSplit[1]);
+									break;
+								case "map_Pm":
+									mtlMat.metallicMap = lineSplit[1];
+									break;
 
-            neosMat.AlbedoTexture.Target = assetDict[material.diffuseMap];
-            neosMat.EmissiveColor.Value = material.emissionColor;
-            neosMat.SpecularColor.Value = material.specularColor;
-            neosMat.SpecularMap.Target = assetDict[material.specularMap];
-        }
+								case "Ks":
+									mtlMat.specularColor = MTLUtils.ToColor(lineSplit.Skip(1).ToArray());
+									break;
+								case "map_Ks":
+									mtlMat.specularMap = lineSplit[1];
+									break;
 
-        private static void SetupUnlit(string file, MTLMaterial material, Slot slot)
-        {
-            UniLog.Log("Starting Unlit");
-            slot.CreateMaterialOrb<UnlitMaterial>();
-            var neosMat = slot.GetComponent<UnlitMaterial>();
+								case "Tf":
+									Warn($"Transparent Color is redundant. MTL importer will not import this.");
+									break;
+								case "Ni":
+									Warn($"Index of Refraction imports are not supported. MTL importer will not import this.");
+									break;
 
-            if (material.alpha == 1.0f)
-            {
-                neosMat.TintColor.Value = material.diffuseColor;
-            }
-            else
-            {
-                neosMat.BlendMode.Value = BlendMode.Alpha;
-                neosMat.TintColor.Value = new color(
-                    material.diffuseColor.r,
-                    material.diffuseColor.g,
-                    material.diffuseColor.b,
-                    material.alpha
-                );
-            }
+								default:
+									Warn($"MTL definition was not found: {propertyTuple}");
+									break;
+							}
+						}
+					}
 
-            neosMat.Texture.Target = assetDict[material.diffuseMap];
-        }
-    }
+					foreach (var material in mtlMaterial)
+					{
+						await default(ToWorld);
+						var slot = Engine.Current.WorldManager.FocusedWorld.AddSlot(material.name);
+						slot.PositionInFrontOfUser();
+						slot.GlobalPosition = slot.GlobalPosition + new float3(i * .2f, 0f, 0f);
+						await default(ToBackground);
+
+						await SetupTextures(file, material, slot).ConfigureAwait(false);
+
+						await default(ToWorld);
+						if (material.specularMap != string.Empty)
+							if (material.isMetallic)
+								SetupMetallic(material, slot);
+							else
+								SetupSpecular(material, slot);
+						else
+							SetupUnlit(material, slot);
+						await default(ToBackground);
+					}
+				}
+				assetDict.Clear();
+			} 
+		}
+
+		private static async Task SetupTextures(string file, MTLMaterial material, Slot slot)
+		{
+			var textureFiles = new string[] {
+				material.ambientMap,
+				material.diffuseMap,
+				material.emissionMap,
+				material.normalMap,
+				material.heightMap,
+				material.metallicMap,
+				material.specularMap,
+			};
+
+			foreach (var texture in textureFiles)
+			{
+				if (!string.IsNullOrEmpty(texture))
+				{
+
+					var path = Path.Combine(Path.GetDirectoryName(file), texture);
+					var img = await MTLUtils.ImportImage(path, slot.World);
+
+					bool flag = false;
+					try
+					{
+						flag = img.RawAsset.HasAlpha;	
+					}
+					catch (Exception e)
+					{
+						UniLog.Error("Error processing  alpha on MTL texture: " + e.Message);
+					}
+					if (!flag && (texture == material.metallicMap || texture == material.specularMap))
+					{
+						img.ProcessPixels(delegate (color c)
+						{
+							float3 rgb = c.rgb;
+							float3 v = c.rgb;
+							return new color(in rgb, MathX.MaxComponent(in v));
+						});
+					}
+					assetDict.Add(texture, img);
+				}
+			}
+		}
+		
+		private static void SetupMetallic(MTLMaterial material, Slot slot)
+		{
+			slot.CreateMaterialOrb<PBS_Metallic>();
+			var neosMat = slot.GetComponent<PBS_Metallic>();
+			StaticTexture2D tex = null;
+
+			if (material.alpha == 1.0f)
+				neosMat.AlbedoColor.Value = material.diffuseColor;
+			else
+			{
+				neosMat.BlendMode.Value = BlendMode.Alpha;
+				neosMat.AlbedoColor.Value = new color(
+					material.diffuseColor.r,
+					material.diffuseColor.g,
+					material.diffuseColor.b,
+					material.alpha
+				);
+			}
+
+			if (_config.GetValue(forceBright))
+				neosMat.AlbedoColor.Value = color.White;
+
+			if (assetDict.TryGetValue(material.diffuseMap, out tex))
+				neosMat.AlbedoTexture.Target = tex;
+			if (assetDict.TryGetValue(material.ambientMap, out tex))
+				neosMat.AlbedoTexture.Target = tex;
+
+			neosMat.EmissiveColor.Value = material.emissionColor;
+			if (assetDict.TryGetValue(material.emissionMap, out tex))
+				neosMat.EmissiveMap.Target = tex;
+
+			if (assetDict.TryGetValue(material.normalMap, out tex))
+				neosMat.NormalMap.Target = tex;
+
+			if (assetDict.TryGetValue(material.heightMap, out tex))
+				neosMat.HeightMap.Target = tex;
+
+			neosMat.Smoothness.Value = 1 - material.roughness;
+			if (assetDict.TryGetValue(material.metallicMap, out tex))
+				neosMat.MetallicMap.Target = tex; 
+		}
+
+		private static void SetupSpecular(MTLMaterial material, Slot slot)
+		{
+			slot.CreateMaterialOrb<PBS_Specular>();
+			var neosMat = slot.GetComponent<PBS_Specular>();
+			StaticTexture2D tex = null;
+
+			if (material.alpha == 1.0f)
+			{
+				neosMat.AlbedoColor.Value = material.diffuseColor;
+			}
+			else
+			{
+				neosMat.BlendMode.Value = BlendMode.Alpha;
+				neosMat.AlbedoColor.Value = new color(
+					material.diffuseColor.r,
+					material.diffuseColor.g,
+					material.diffuseColor.b,
+					material.alpha
+				);
+			}
+
+			if (_config.GetValue(forceBright))
+				neosMat.AlbedoColor.Value = color.White;
+
+			if (assetDict.TryGetValue(material.diffuseMap, out tex))
+				neosMat.AlbedoTexture.Target = tex;
+			if (assetDict.TryGetValue(material.ambientMap, out tex))
+				neosMat.AlbedoTexture.Target = tex;
+
+			neosMat.EmissiveColor.Value = material.emissionColor;
+			if (assetDict.TryGetValue(material.emissionMap, out tex))
+				neosMat.EmissiveMap.Target = tex;
+
+			if (assetDict.TryGetValue(material.normalMap, out tex))
+				neosMat.NormalMap.Target = tex;
+
+			if (assetDict.TryGetValue(material.heightMap, out tex))
+				neosMat.HeightMap.Target = tex;
+
+			neosMat.SpecularColor.Value = material.specularColor;
+			if (assetDict.TryGetValue(material.specularMap, out tex))
+				neosMat.SpecularMap.Target = tex;
+		}
+
+		private static void SetupUnlit(MTLMaterial material, Slot slot)
+		{
+			slot.CreateMaterialOrb<UnlitMaterial>();
+			var neosMat = slot.GetComponent<UnlitMaterial>();
+			StaticTexture2D tex = null;
+
+			if (material.alpha == 1.0f)
+			{
+				neosMat.TintColor.Value = material.diffuseColor;
+			}
+			else
+			{
+				neosMat.BlendMode.Value = BlendMode.Alpha;
+				neosMat.TintColor.Value = new color(
+					material.diffuseColor.r,
+					material.diffuseColor.g,
+					material.diffuseColor.b,
+					material.alpha
+				);
+			}
+
+			if (_config.GetValue(forceBright))
+				neosMat.TintColor.Value = color.White;
+
+			if (assetDict.TryGetValue(material.diffuseMap, out tex))
+				neosMat.Texture.Target = tex;
+			if (assetDict.TryGetValue(material.ambientMap, out tex))
+				neosMat.Texture.Target = tex;
+		}
+	}
 }
