@@ -1,53 +1,51 @@
-﻿namespace MTLImporter.Tests
+﻿namespace MTLImporter.Tests;
+
+public class Program
 {
-    public class Program
+    static void Main()
     {
-        static void Main(string[] args)
+        string file = "Tests/test.mtl";
+        List<List<string>> materials = new();
+
+        // https://stackoverflow.com/questions/65201192/read-from-file-split-content-into-group-when-empty-line
+        try
         {
-            string file = "Tests/test.mtl";
-            List<List<string>> materials = new List<List<string>>();
+            List<string> currentMaterial = new();
 
-            // https://stackoverflow.com/questions/65201192/read-from-file-split-content-into-group-when-empty-line
-            try
+            foreach (string line in File.ReadLines(file))
             {
-                var mtlMaterial = new List<MTLMaterial>();
-                List<string> currentMaterial = new List<string>();
-
-                foreach (string line in File.ReadLines(file))
+                if (line.Trim().Length == 0)
                 {
-                    if (line.Trim().Length == 0)
+                    if (currentMaterial.Count > 0)
                     {
-                        if (currentMaterial.Count > 0)
-                        {
-                            materials.Add(currentMaterial);
-                            currentMaterial = new List<string>();
-                        }
-                    }
-                    else
-                    {
-                        currentMaterial.Add(line);
+                        materials.Add(currentMaterial);
+                        currentMaterial = new List<string>();
                     }
                 }
-
-                if (currentMaterial.Count > 0)
+                else
                 {
-                    materials.Add(currentMaterial);
+                    currentMaterial.Add(line);
                 }
+            }
 
-            }
-            catch (FileNotFoundException e)
+            if (currentMaterial.Count > 0)
             {
-                Console.WriteLine(e.Message);
+                materials.Add(currentMaterial);
             }
-            
-            foreach (var material in materials)
+
+        }
+        catch (FileNotFoundException e)
+        {
+            Console.WriteLine(e.Message);
+        }
+        
+        foreach (var material in materials)
+        {
+            foreach (var property in material)
             {
-                foreach (var property in material)
-                {
-                   Console.WriteLine($"{property}");
-                }
-                Console.WriteLine($"");
+               Console.WriteLine($"{property}");
             }
+            Console.WriteLine($"");
         }
     }
 }

@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
 [assembly: AssemblyTitle("MTLImporter")]
-[assembly: AssemblyDescription("Imports Wavefront .mtl directly into NeosVR as material orbs.")]
+[assembly: AssemblyDescription("Imports Wavefront .mtl directly into Resonite as material orbs.")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("Hiatus Labs")]
 [assembly: AssemblyProduct("MTLImporter")]
