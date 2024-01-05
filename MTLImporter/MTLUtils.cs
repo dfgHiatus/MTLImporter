@@ -3,6 +3,7 @@ using System.IO;
 using System.Threading.Tasks;
 using Elements.Core;
 using FrooxEngine;
+using FrooxEngine.Store;
 
 namespace MTLImporter;
 
@@ -39,7 +40,7 @@ public static class MTLUtils
 		if (!uri.IsWellFormedOriginalString())
 		{
 			await default(ToBackground);
-			LocalDB localDB = world.Engine.LocalDB;
+			var localDB = world.Engine.LocalDB;
 			uri = await localDB.ImportLocalAssetAsync(path, LocalDB.ImportLocation.Copy).ConfigureAwait(continueOnCapturedContext: false);
 		}
 
