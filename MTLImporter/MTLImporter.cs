@@ -21,9 +21,10 @@ namespace MTLImporter;
 
 public class MTLImporter : ResoniteMod
 {
+	internal const string VERSION_CONSTANT = "2.0.2";
 	public override string Name => "MTLImporter";
 	public override string Author => "dfgHiatus";
-	public override string Version => "2.0.1";
+	public override string Version => VERSION_CONSTANT;
 	public override string Link => "https://github.com/dfgHiatus/MTLImporter/";
 
 	private static ModConfiguration _config;
